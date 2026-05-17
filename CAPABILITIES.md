@@ -1,5 +1,7 @@
 # Capabilities
 
+**Cross-model verified 2026-05-17:** all 14 capabilities pass both Claude Opus 4.7 and OpenAI Codex independent eval runs (verify + adversarial modes). Reports in `evals/reports/`.
+
 **Iron-clad contract.** Every capability listed here has:
 1. **Claim** — what the system promises to do
 2. **Acceptance** — the binary pass/fail line
@@ -172,9 +174,10 @@ Storage: SQLite at `~/.assay/decisions.db` (override via `ASSAY_DB_PATH`)
 - A `refusal` envelope with reason (corpus too thin, no relevant matches, or low confidence).
 
 **Acceptance.**
-- With corpus ≥5 decisions: returns non-empty `verdict` + `citations[]`; every `citation.decision_id` exists in the decisions table.
+- With corpus ≥5 decisions AND topic matches: returns non-empty `verdict` + `citations[]`; every `citation.decision_id` exists in the decisions table.
 - With corpus <5 decisions: returns `refusal` with cold-start message.
-- With corpus ≥5 but no relevant matches: returns `refusal` (current v2 implementation may need extension here; flag in adversarial run).
+- With corpus ≥5 but no topic matches: returns `refusal` with explanation. Topic relevance uses substring matching against decision bodies + layers, with semantic fallback via provider.search() when available.
+- With empty or too-short topic (<3 chars of signal): returns `refusal`.
 - `verdict` never contains uncited claims (current v2 prefixes each citation with `[N]` and verdict is the concatenated stitch).
 
 **Verify.** `evals/capabilities/c8-brief-citations.eval.mjs`
