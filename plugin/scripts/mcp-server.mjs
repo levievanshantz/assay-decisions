@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// AssayLabs MCP server entry. stdio transport. Exposes 3 tools:
+// Assay MCP server entry. stdio transport. Exposes 3 tools:
 //   - assay_decision_recall
 //   - assay_decision_expand
 //   - assay_brief_render
@@ -21,7 +21,7 @@ const { AssayMCPServer } = await import(resolve(distRoot, "mcp/server.js"));
 const assay = new AssayMCPServer();
 
 const server = new Server(
-  { name: "assaylabs", version: "2.0.0-alpha.1" },
+  { name: "assay", version: "2.0.0-alpha.2" },
   { capabilities: { tools: {} } },
 );
 
@@ -30,7 +30,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "assay_decision_recall",
       description:
-        "Recall typed decisions from the AssayLabs decision graph. Returns cited decisions with supersession chains and (when available) enrichment from the claude-mem memory substrate. Use when asked 'what did we decide about X' or before re-deriving a past decision.",
+        "Recall typed decisions from the Assay decision graph. Returns cited decisions with supersession chains and (when available) enrichment from the claude-mem memory substrate. Use when asked 'what did we decide about X' or before re-deriving a past decision.",
       inputSchema: {
         type: "object",
         properties: {

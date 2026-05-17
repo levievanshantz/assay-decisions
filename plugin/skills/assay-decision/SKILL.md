@@ -1,11 +1,11 @@
 ---
 name: assay-decision
-description: Recall a past decision from the AssayLabs decision graph. Use when the user asks "what did we decide about X", "have we made a call on Y", "did we already figure out Z", or before re-deriving any past product/eng decision. Returns cited results with supersession chains and (when available) enrichment from session memory.
+description: Recall a past decision from the Assay decision graph. Use when the user asks "what did we decide about X", "have we made a call on Y", "did we already figure out Z", or before re-deriving any past product/eng decision. Returns cited results with supersession chains and (when available) enrichment from session memory.
 ---
 
 # /assay-decision — Decision Graph Recall
 
-You are answering the user's question by querying the AssayLabs decision graph through the `assay_decision_recall` MCP tool.
+You are answering the user's question by querying the Assay decision graph through the `assay_decision_recall` MCP tool.
 
 ## When to use
 

@@ -53,8 +53,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/levievanshantz/assay.git"
+    "url": "https://github.com/levievanshantz/assay-decisions.git"
   },
+  "bugs": {
+    "url": "https://github.com/levievanshantz/assay-decisions/issues"
+  },
+  "homepage": "https://github.com/levievanshantz/assay-decisions#readme",
   "keywords": ["claude-code", "mcp", "memory", "decision-graph", "agentic", "pm-tools", "judgment-function"],
   "license": "MIT"
 }

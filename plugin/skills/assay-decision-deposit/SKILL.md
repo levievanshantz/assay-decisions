@@ -1,11 +1,11 @@
 ---
 name: assay-decision-deposit
-description: Explicitly deposit a decision into the AssayLabs decision graph, bypassing the Stop-hook ambient capture path. Use when the user says "remember this decision", "log that we decided X", "record this", or when working under ECC_HOOK_PROFILE=minimal where ambient capture is disabled. Also the right tool for retroactively capturing a decision made earlier in the session.
+description: Explicitly deposit a decision into the Assay decision graph, bypassing the Stop-hook ambient capture path. Use when the user says "remember this decision", "log that we decided X", "record this", or when working under ECC_HOOK_PROFILE=minimal where ambient capture is disabled. Also the right tool for retroactively capturing a decision made earlier in the session.
 ---
 
 # /assay-decision-deposit — Explicit Decision Deposit
 
-You are recording a decision into the AssayLabs decision graph explicitly, rather than relying on the ambient Stop-hook drain.
+You are recording a decision into the Assay decision graph explicitly, rather than relying on the ambient Stop-hook drain.
 
 ## When to use
 

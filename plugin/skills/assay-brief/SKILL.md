@@ -1,11 +1,11 @@
 ---
 name: assay-brief
-description: Compose a cited brief on a topic from the AssayLabs decision graph. Use when the user wants a synthesized "what do we know about X" rather than raw recall — e.g., "brief me on our pricing decisions", "give me a rundown on the auth migration", "what's the state of our PM tooling work". Returns a structured verdict with citations, or a refusal envelope when the corpus is too thin to brief responsibly.
+description: Compose a cited brief on a topic from the Assay decision graph. Use when the user wants a synthesized "what do we know about X" rather than raw recall — e.g., "brief me on our pricing decisions", "give me a rundown on the auth migration", "what's the state of our PM tooling work". Returns a structured verdict with citations, or a refusal envelope when the corpus is too thin to brief responsibly.
 ---
 
 # /assay-brief — Cited Brief Composition
 
-You are composing a structured brief on a topic by querying the AssayLabs decision graph through the `assay_brief_render` MCP tool.
+You are composing a structured brief on a topic by querying the Assay decision graph through the `assay_brief_render` MCP tool.
 
 ## When to use
 
