@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "assay": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/plugin/scripts/mcp-server.mjs"]
+    }
+  }
+}

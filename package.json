@@ -1,0 +1,60 @@
+{
+  "name": "@assaylabs/assay",
+  "version": "2.0.0-alpha.2",
+  "description": "Typed decision-graph judgment function for Claude Code. The second brain for Builder PMs. Cited recall, supersession-aware, local-first, no quota.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "assay": "bin/assay.mjs"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "plugin/",
+    "scripts/",
+    "evals/",
+    "LICENSE",
+    "README.md",
+    "USAGE.md",
+    "ARCHITECTURE.md",
+    "CAPABILITIES.md",
+    "ROADMAP.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test tests/",
+    "smoke": "npm run build && node scripts/smoke-v2-integration.mjs",
+    "demo": "npm run build && node scripts/demo-end-to-end.mjs",
+    "eval": "npm run build && node evals/run-all.mjs",
+    "eval:verify": "npm run build && node evals/run-all.mjs --mode=verify",
+    "eval:adversarial": "npm run build && node evals/run-all.mjs --mode=adversarial",
+    "postinstall": "node scripts/check-claude-mem-version.mjs || true"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "11.5.0"
+  },
+  "peerDependencies": {
+    "claude-mem": ">=13.0.0"
+  },
+  "peerDependenciesMeta": {
+    "claude-mem": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.11",
+    "@types/node": "22.7.4",
+    "typescript": "5.6.2"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/levievanshantz/assay.git"
+  },
+  "keywords": ["claude-code", "mcp", "memory", "decision-graph", "agentic", "pm-tools", "judgment-function"],
+  "license": "MIT"
+}
