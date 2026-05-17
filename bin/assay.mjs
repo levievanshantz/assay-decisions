@@ -75,6 +75,19 @@ function install() {
   mkdirSync(join(ASSAY_DIR, "analytics"), { recursive: true });
   ok(`Workspace at ${ASSAY_DIR}`);
 
+  info("Registering MCP server with Claude Code (absolute path)...");
+  const mcpServerPath = join(PLUGIN_DEST, "plugin", "scripts", "mcp-server.mjs");
+  try {
+    execSync(`claude mcp remove assay 2>/dev/null || true`, { stdio: "ignore" });
+  } catch {}
+  try {
+    execSync(`claude mcp add assay node "${mcpServerPath}" --scope user`, { stdio: "ignore" });
+    ok(`MCP server 'assay' registered at user scope`);
+  } catch (err) {
+    warn(`MCP auto-registration failed: ${err.message}`);
+    warn(`Manual fix: claude mcp add assay node "${mcpServerPath}" --scope user`);
+  }
+
   console.log("\nInstallation complete.");
   console.log("\nNext steps:");
   console.log("  1. Make sure claude-mem is installed and its worker is running:");
@@ -169,6 +182,10 @@ function uninstall() {
   } else {
     info(`nothing to remove at ${PLUGIN_DEST}`);
   }
+  try {
+    execSync(`claude mcp remove assay 2>/dev/null || true`, { stdio: "ignore" });
+    ok(`MCP server registration removed`);
+  } catch {}
   console.log("\nNote: ~/.assay/decisions.db preserved. Remove with: rm -rf ~/.assay");
   console.log("Restart Claude Code to pick up the uninstall.");
 }
