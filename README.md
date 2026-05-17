@@ -1,4 +1,6 @@
-# AssayLabs Decision Layer
+# Assay
+
+[![CI](https://github.com/levievanshantz/assay-decisions/actions/workflows/ci.yml/badge.svg)](https://github.com/levievanshantz/assay-decisions/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Node 22+](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org) [![Cross-model verified](https://img.shields.io/badge/contract-verified%20Claude%20%2B%20Codex-success.svg)](PROOF.md)
 
 **The second brain for Builder PMs.** Typed decision-graph judgment function for Claude Code, built on top of [claude-mem](https://github.com/thedotmack/claude-mem) as memory substrate.
 
