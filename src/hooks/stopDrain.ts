@@ -128,8 +128,11 @@ export async function runStopDrain(input: StopHookInput): Promise<StopHookResult
     store = new DecisionStore();
     let depositedIds: string[] = [];
     let lastErr: unknown = null;
-    // Tier 1: retry up to 3x on transient (SQLITE_BUSY).
-    for (let attempt = 0; attempt < 3; attempt++) {
+    // Tier 1: retry transient SQLITE_BUSY with exponential backoff.
+    // 6 attempts, backoffs: 100/200/400/800/1600/2000ms = ~5s total max.
+    // Real-world locks shouldn't last that long; if they do, escalate to tier 3.
+    const BACKOFFS_MS = [100, 200, 400, 800, 1600, 2000];
+    for (let attempt = 0; attempt < BACKOFFS_MS.length; attempt++) {
       try {
         depositedIds = store.depositBatch(decisions, {
           session_id: input.session_id,
@@ -141,10 +144,11 @@ export async function runStopDrain(input: StopHookInput): Promise<StopHookResult
         lastErr = err;
         const msg = err instanceof Error ? err.message : String(err);
         if (/SQLITE_BUSY|database is locked/i.test(msg)) {
-          await new Promise((r) => setTimeout(r, 100 * (attempt + 1)));
+          if (attempt === BACKOFFS_MS.length - 1) break; // bail to tier 3
+          await new Promise((r) => setTimeout(r, BACKOFFS_MS[attempt]));
           continue;
         }
-        // Non-transient: bail to tier 3
+        // Non-transient: bail to tier 3 immediately
         throw err;
       }
     }

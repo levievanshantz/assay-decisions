@@ -125,14 +125,15 @@ export class AssayMCPServer {
     }
 
     // Two-tier eager fetch: enrich top-N via batched provider call.
+    // Cap the search to EAGER_FETCH_TOP_N to honor the "lazy 4-10" contract —
+    // expand() does the wider fetch on demand.
     const eagerDecisions = decisions.slice(0, EAGER_FETCH_TOP_N);
     let enrichmentMap = new Map<string, { source: string; snippet: string }[]>();
     try {
-      const searchResults = await this.provider.search(query, { limit: 10 });
+      const searchResults = await this.provider.search(query, { limit: EAGER_FETCH_TOP_N });
       const ids = searchResults.map((r) => r.id);
       if (ids.length > 0) {
         const { found } = await this.provider.getObservations(ids);
-        // Naive enrichment join: attach top observations to top eager decisions.
         const enrichments = found.slice(0, EAGER_FETCH_TOP_N).map((o) => ({
           source: `claude-mem:${o.id}`,
           snippet: (o.narrative ?? o.text ?? "").slice(0, 280),
@@ -207,38 +208,84 @@ export class AssayMCPServer {
    * citations. Refusal envelope when confidence is low or evidence is ambiguous.
    */
   async brief(topic: string): Promise<BriefResponse> {
-    const recall = await this.recall(topic, { limit: 5 });
-
-    if (recall.cold_start) {
+    const corpusSize = this.store.count();
+    if (corpusSize < COLD_START_THRESHOLD) {
       return {
         topic,
         verdict: "",
         citations: [],
-        refusal: { reason: recall.cold_start.message },
+        refusal: {
+          reason: `Your decision corpus has ${corpusSize} item${corpusSize === 1 ? "" : "s"} (fewer than ${COLD_START_THRESHOLD}). Brief composition needs more accumulated evidence.`,
+        },
       };
     }
 
-    if (recall.results.length === 0) {
+    // Topic relevance filter: a brief MUST be on-topic, not just "recent decisions".
+    // Strategy: case-insensitive substring match on decision bodies, with a fallback
+    // to claude-mem semantic search when available. If neither yields matches, refuse.
+    const lowerTopic = topic.toLowerCase().trim();
+    const topicTokens = lowerTopic
+      .split(/\s+/)
+      .filter((t) => t.length >= 3);  // skip stop words like 'a', 'of'
+
+    const allRecent = this.store.recent(50);  // wide pool to filter
+    let relevant: typeof allRecent = [];
+
+    if (topicTokens.length === 0) {
+      // Empty topic = no relevance signal. Refuse.
       return {
         topic,
         verdict: "",
         citations: [],
-        refusal: { reason: "No relevant decisions found in corpus." },
+        refusal: { reason: "Topic too short to brief on. Provide a more specific topic." },
       };
     }
 
-    // Naive v2 composition: stitch decision bodies into a structured brief.
-    // Future: real LLM composition via Claude Code's available context.
-    const citations = recall.results.map((r) => ({
-      decision_id: r.decision.id,
-      body: r.decision.body,
-      evidence_source: r.enrichment?.[0]?.source,
-      evidence_snippet: r.enrichment?.[0]?.snippet,
+    relevant = allRecent.filter((d) => {
+      const body = d.body.toLowerCase();
+      const layer = (d.layer ?? "").toLowerCase();
+      return topicTokens.some((t) => body.includes(t) || layer.includes(t));
+    });
+
+    // Augment with claude-mem semantic results if the provider is reachable.
+    if (relevant.length < 5) {
+      try {
+        const health = await this.provider.health();
+        if (health.status !== "offline") {
+          const semantic = await this.provider.search(topic, { limit: 5 });
+          // We can't directly map semantic IDs to decisions (different stores),
+          // but if semantic returns nothing AND substring is empty, the corpus
+          // has no signal on this topic. Use semantic count as a signal only.
+          if (semantic.length === 0 && relevant.length === 0) {
+            return {
+              topic,
+              verdict: "",
+              citations: [],
+              refusal: { reason: `No decisions in corpus match topic "${topic}". Try a broader query or use /assay-decision for raw recall.` },
+            };
+          }
+        }
+      } catch {
+        // Provider failure is not a refusal trigger — we still have substring matches (or not).
+      }
+    }
+
+    if (relevant.length === 0) {
+      return {
+        topic,
+        verdict: "",
+        citations: [],
+        refusal: { reason: `No decisions in corpus match topic "${topic}". Try a broader query or use /assay-decision for raw recall.` },
+      };
+    }
+
+    // Compose verdict: stitch matching decision bodies, each with citation marker.
+    const top = relevant.slice(0, 5);
+    const citations = top.map((d) => ({
+      decision_id: d.id,
+      body: d.body,
     }));
-
-    const verdict = recall.results
-      .map((r, i) => `[${i + 1}] ${r.decision.body}`)
-      .join("\n\n");
+    const verdict = top.map((d, i) => `[${i + 1}] ${d.body}`).join("\n\n");
 
     return { topic, verdict, citations };
   }

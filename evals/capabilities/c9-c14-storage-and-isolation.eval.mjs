@@ -89,14 +89,33 @@ export const C10 = defineEval({
     return { pass: true, details: { decisions: dCount, transitions: tCount, initial_deposits: initials.length } };
   },
   async adversarial({ sandbox }) {
-    // Verify there's no public API to delete transitions.
-    // Best signal: the DecisionStore class doesn't export a delete-transition method.
+    // C10 strengthened: append-only must be enforced by storage triggers,
+    // not just API absence. Codex's probe direct-SQL-tampered the table;
+    // after the fix, BEFORE UPDATE/DELETE triggers reject the operation.
+    await populateCorpus(sandbox, 1);
+    const db = new Database(sandbox.dbPath);
+    let updateBlocked = false;
+    let deleteBlocked = false;
+    try {
+      db.exec("UPDATE decision_transitions SET reason = 'tampered'");
+    } catch (err) {
+      if (/append-only/i.test(err.message)) updateBlocked = true;
+    }
+    try {
+      db.exec("DELETE FROM decision_transitions");
+    } catch (err) {
+      if (/append-only/i.test(err.message)) deleteBlocked = true;
+    }
+    db.close();
+    assert(updateBlocked, `UPDATE on decision_transitions was NOT blocked by trigger`);
+    assert(deleteBlocked, `DELETE on decision_transitions was NOT blocked by trigger`);
+    // Also verify the API-level absence still holds.
     const store = new DecisionStore(sandbox.dbPath);
     const proto = Object.getOwnPropertyNames(Object.getPrototypeOf(store));
     const hasDelete = proto.some(m => /delet|remove/i.test(m) && /trans/i.test(m));
     store.close();
     assert(!hasDelete, `found delete-transition-like method on DecisionStore: ${proto.join(",")}`);
-    return { pass: true, details: { append_only_enforced_by_api: true } };
+    return { pass: true, details: { storage_triggers: true, api_no_mutate: true } };
   },
 });
 
@@ -167,6 +186,28 @@ export const C12 = defineEval({
     await s3.close();
     return { pass: true, details: { at_0: "cold-start", at_4: "cold-start", at_5: "normal-results" } };
   },
+  async adversarial({ sandbox }) {
+    // C12 adversarial (Codex caught no-phase): edge cases around threshold.
+    // 1. Exactly at threshold (5): no cold_start
+    await populateCorpus(sandbox, 5);
+    const s1 = new AssayMCPServer(new DecisionStore(sandbox.dbPath), new ClaudeMemHTTPProvider());
+    const r1 = await s1.recall("x");
+    assert(!r1.cold_start, `at exactly 5: no cold_start, got ${JSON.stringify(r1.cold_start)}`);
+    await s1.close();
+
+    // 2. After raw delete bringing count below threshold: cold_start returns
+    const db = new Database(sandbox.dbPath);
+    db.pragma("foreign_keys = OFF");
+    db.exec("DELETE FROM decisions WHERE rowid <= 3");  // delete 3, leave 2
+    db.close();
+    const s2 = new AssayMCPServer(new DecisionStore(sandbox.dbPath), new ClaudeMemHTTPProvider());
+    const r2 = await s2.recall("x");
+    assert(r2.cold_start && r2.cold_start.corpus_size === 2,
+      `after delete to 2: expected cold_start with corpus_size:2, got ${JSON.stringify(r2.cold_start)}`);
+    await s2.close();
+
+    return { pass: true, details: { at_5: "no-cold-start", after_delete_to_2: "cold-start" } };
+  },
 });
 
 // ────────────────────────────────────────────────────────────────────────
@@ -190,6 +231,44 @@ export const C13 = defineEval({
     assert(Array.isArray(expandResp.expanded_results), `expand should return array`);
     await server.close();
     return { pass: true, details: { eager_enriched: enriched.length, expand_works: true } };
+  },
+  async adversarial({ sandbox }) {
+    // C13 adversarial (Codex caught no-phase + over-fetch): eager search
+    // must request only TOP-3 from provider, not 10. Use a fake provider
+    // that records the limits it was called with.
+    await populateCorpus(sandbox, 8);
+
+    const calls = { search: [], getObs: [] };
+    const fakeProvider = {
+      async health() { return { status: "full", latency_ms: 1 }; },
+      async search(q, opts) {
+        calls.search.push(opts?.limit);
+        return Array.from({ length: Math.min(opts?.limit ?? 10, 5) }, (_, i) => ({
+          id: `obs-${i}`, score: 0.9 - i * 0.1, snippet: `s${i}`, type: "x", created_at: Date.now(),
+        }));
+      },
+      async getObservations(ids) {
+        calls.getObs.push(ids.length);
+        return {
+          found: ids.map((id) => ({ id, text: `body-${id}`, narrative: `n-${id}`, created_at: Date.now() })),
+          missing: [],
+        };
+      },
+    };
+
+    const server = new AssayMCPServer(new DecisionStore(sandbox.dbPath), fakeProvider);
+    const recallResp = await server.recall("topic");
+    assert(calls.search.length === 1, `expected 1 search call during recall, got ${calls.search.length}`);
+    assert(calls.search[0] === 3, `expected search limit=3 (eager top-3), got ${calls.search[0]}`);
+
+    // expand() should fetch more
+    const ids = recallResp.results.slice(3, 6).map((r) => r.decision.id);
+    const expandResp = await server.expand("topic", ids);
+    assert(calls.search.length >= 2, `expand should trigger another search`);
+    assert(calls.search[1] >= 10, `expand limit should be >=10 (lazy 4-10 covers wider pool), got ${calls.search[1]}`);
+
+    await server.close();
+    return { pass: true, details: { eager_limit: calls.search[0], expand_limit: calls.search[1] } };
   },
 });
 

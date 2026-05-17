@@ -47,7 +47,7 @@ function checkClaudeMem() {
 }
 
 function install() {
-  console.log("\nAssay — install\n");
+  console.log("\nassay install\n");
 
   ensureBuilt();
 
@@ -88,7 +88,7 @@ function install() {
 }
 
 function doctor() {
-  console.log("\nAssayLabs doctor\n");
+  console.log("\nassay doctor\n");
 
   let allOk = true;
 
@@ -175,7 +175,7 @@ function uninstall() {
 
 function help() {
   console.log(`
-Assay CLI
+assay — typed decision-graph judgment function for Claude Code
 
 USAGE:
   assay <command>

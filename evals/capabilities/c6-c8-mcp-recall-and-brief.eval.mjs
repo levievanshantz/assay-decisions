@@ -135,16 +135,41 @@ export const C8 = defineEval({
     return { pass: true, details: { citations: resp.citations.length } };
   },
   async adversarial({ sandbox }) {
-    // No corpus — brief MUST refuse, not invent a verdict
+    // C8 strengthened: brief MUST refuse when corpus has decisions but none match the topic.
+    // Codex caught the prior behavior of composing recent decisions regardless of relevance.
     const server = new AssayMCPServer(
       new DecisionStore(sandbox.dbPath),
       new ClaudeMemHTTPProvider(),
     );
-    const resp = await server.brief("anything");
+
+    // 1) Empty corpus — refuse
+    const r1 = await server.brief("anything");
+    assert(r1.refusal, `empty corpus must return refusal, got verdict: ${r1.verdict}`);
+
+    // 2) Populated corpus but unrelated topic — refuse (the C8 fix)
+    await populateCorpus(sandbox, 6);  // bodies contain "topic X" / "relevant to topic X"
+    const r2 = await server.brief("quantum cryptography zebras");  // no match
+    assert(r2.refusal, `unrelated topic must refuse, got verdict: ${r2.verdict?.slice(0, 100)}`);
+    assert(r2.verdict === "" || !r2.verdict, `verdict must be empty on refusal`);
+    assert(r2.citations.length === 0, `no citations on refusal`);
+
+    // 3) Topic that DOES match — should compose
+    const r3 = await server.brief("topic X");
+    if (r3.refusal) {
+      throw new Error(`matching topic should compose, got refusal: ${r3.refusal.reason}`);
+    }
+    assert(r3.verdict && r3.verdict.length > 0, `verdict should compose on match`);
+
+    // 4) Empty/short topic — refuse
+    const r4 = await server.brief("");
+    assert(r4.refusal, `empty topic must refuse`);
+
     await server.close();
-    assert(resp.refusal, `empty corpus must return refusal, got verdict: ${resp.verdict}`);
-    assert(resp.verdict === "" || !resp.verdict, `verdict must be empty when refusing`);
-    assert(resp.citations.length === 0, `no citations on refusal`);
-    return { pass: true, details: { empty_corpus_refuses: true } };
+    return { pass: true, details: {
+      empty_corpus: "refuse",
+      unrelated_topic: "refuse",
+      matching_topic: "compose",
+      empty_topic: "refuse",
+    } };
   },
 });

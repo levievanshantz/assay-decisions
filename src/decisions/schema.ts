@@ -61,6 +61,33 @@ CREATE TABLE IF NOT EXISTS decision_evidence (
 
 CREATE INDEX IF NOT EXISTS idx_evidence_decision ON decision_evidence(decision_id);
 
+-- Append-only enforcement at the storage layer: decision_transitions and
+-- decision_evidence rows are immutable. Honors C10 contract beyond the API
+-- boundary — direct SQL UPDATE/DELETE is blocked even by tooling.
+CREATE TRIGGER IF NOT EXISTS decision_transitions_no_update
+  BEFORE UPDATE ON decision_transitions
+  BEGIN
+    SELECT RAISE(FAIL, 'decision_transitions is append-only; UPDATE not permitted');
+  END;
+
+CREATE TRIGGER IF NOT EXISTS decision_transitions_no_delete
+  BEFORE DELETE ON decision_transitions
+  BEGIN
+    SELECT RAISE(FAIL, 'decision_transitions is append-only; DELETE not permitted');
+  END;
+
+CREATE TRIGGER IF NOT EXISTS decision_evidence_no_update
+  BEFORE UPDATE ON decision_evidence
+  BEGIN
+    SELECT RAISE(FAIL, 'decision_evidence is append-only; UPDATE not permitted');
+  END;
+
+CREATE TRIGGER IF NOT EXISTS decision_evidence_no_delete
+  BEFORE DELETE ON decision_evidence
+  BEGIN
+    SELECT RAISE(FAIL, 'decision_evidence is append-only; DELETE not permitted');
+  END;
+
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY,
   applied_at INTEGER NOT NULL
