@@ -167,7 +167,7 @@ export async function runStopDrain(input: StopHookInput): Promise<StopHookResult
       const conflicts = decisions.filter((d) => d.kind === "conflict");
       if (conflicts.length > 0) {
         process.stderr.write(
-          `[assaylabs] strict mode: ${conflicts.length} conflict(s) captured this session\n`,
+          `[assay] strict mode: ${conflicts.length} conflict(s) captured this session\n`,
         );
       }
     }
@@ -187,7 +187,7 @@ export async function runStopDrain(input: StopHookInput): Promise<StopHookResult
       reason: msg,
       transcript_path: transcriptPath,
     });
-    process.stderr.write(`[assaylabs] hook degraded: ${msg}\n`);
+    process.stderr.write(`[assay] hook degraded: ${msg}\n`);
     return { ok: false, profile: prof, reason: msg };
   } finally {
     store?.close();

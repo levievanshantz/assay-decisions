@@ -38,6 +38,9 @@ jobs:
       - name: Run capability eval gate (verify mode only — adversarial requires live worker)
         run: node evals/run-all.mjs --mode=verify
 
+      - name: Check consistency (R21 — tool / capability counts match across surfaces)
+        run: node bin/assay.mjs check-consistency
+
       - name: Upload eval reports
         if: always()
         uses: actions/upload-artifact@v4

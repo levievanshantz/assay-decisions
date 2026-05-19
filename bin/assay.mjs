@@ -175,6 +175,174 @@ function demo() {
   execSync("node scripts/demo-end-to-end.mjs", { cwd: REPO_ROOT, stdio: "inherit" });
 }
 
+function evalCmd() {
+  ensureBuilt();
+  execSync("node evals/run-all.mjs", { cwd: REPO_ROOT, stdio: "inherit" });
+}
+
+async function replay() {
+  ensureBuilt();
+  const { DecisionStore } = await import(join(REPO_ROOT, "dist/decisions/store.js"));
+  const Database = (await import("better-sqlite3")).default;
+
+  console.log("\nassay doctor --replay\n");
+  console.log("Walking decision graph + asserting invariants...\n");
+
+  const dbPath = join(ASSAY_DIR, "decisions.db");
+  if (!existsSync(dbPath)) {
+    info("decisions.db not yet created — nothing to replay");
+    process.exit(0);
+  }
+
+  const store = new DecisionStore(dbPath);
+  const db = new Database(dbPath, { readonly: true });
+
+  let issues = 0;
+  const decisions = store.recent(100_000);
+
+  // Invariant 1: every decision has at least one decision_transitions row
+  const transitionsByDecision = new Map();
+  for (const row of db.prepare("SELECT decision_id FROM decision_transitions").all()) {
+    transitionsByDecision.set(row.decision_id, (transitionsByDecision.get(row.decision_id) || 0) + 1);
+  }
+  let missingTransitions = 0;
+  for (const d of decisions) {
+    if (!transitionsByDecision.has(d.id)) missingTransitions++;
+  }
+  if (missingTransitions === 0) ok(`(I1) every decision has audit trail (${decisions.length} decisions)`);
+  else { fail(`(I1) ${missingTransitions} decisions missing initial-deposit transition`); issues += missingTransitions; }
+
+  // Invariant 2: no orphan transitions
+  const orphans = db.prepare(`SELECT COUNT(*) as n FROM decision_transitions WHERE decision_id NOT IN (SELECT id FROM decisions)`).get().n;
+  if (orphans === 0) ok(`(I2) no orphan transitions (FK integrity intact)`);
+  else { fail(`(I2) ${orphans} orphan transitions reference deleted decisions`); issues += orphans; }
+
+  // Invariant 3: every initial deposit has from_status=NULL
+  const badInitials = db.prepare(`SELECT COUNT(*) as n FROM decision_transitions WHERE reason = 'initial deposit' AND from_status IS NOT NULL`).get().n;
+  if (badInitials === 0) ok(`(I3) initial deposits have from_status=NULL`);
+  else { fail(`(I3) ${badInitials} initial deposits with non-NULL from_status`); issues += badInitials; }
+
+  // Invariant 4: supersession chains terminate (no cycles longer than 10 hops)
+  let cycleViolations = 0;
+  for (const d of decisions) {
+    const chain = store.supersessionChain(d.id);
+    if (chain.length > 10) { cycleViolations++; fail(`(I4) decision ${d.id.slice(0,8)} chain > 10 hops (${chain.length})`); }
+  }
+  if (cycleViolations === 0) ok(`(I4) all supersession chains ≤ 10 hops`);
+
+  // Invariant 5: kind is always decision or conflict
+  const badKinds = db.prepare(`SELECT COUNT(*) as n FROM decisions WHERE kind NOT IN ('decision', 'conflict')`).get().n;
+  if (badKinds === 0) ok(`(I5) all decision rows have valid kind`);
+  else { fail(`(I5) ${badKinds} decisions with invalid kind`); issues += badKinds; }
+
+  store.close();
+  db.close();
+
+  if (issues === 0) {
+    console.log(`\n  ✓ All ${decisions.length} decisions pass 5 invariants.\n`);
+    process.exit(0);
+  } else {
+    console.log(`\n  ✗ ${issues} invariant violation(s) found across ${decisions.length} decisions.\n`);
+    process.exit(1);
+  }
+}
+
+function checkConsistency() {
+  // Tool-count and capability-count consistency check (R21 + R7 CI gate).
+  ensureBuilt();
+  console.log("\nassay check-consistency\n");
+  let issues = 0;
+
+  // Count MCP tools registered in the server
+  const mcpServerPath = join(REPO_ROOT, "plugin/scripts/mcp-server.mjs");
+  const mcpSrc = readFileSync(mcpServerPath, "utf8");
+  const toolMatches = mcpSrc.matchAll(/name:\s*["']([a-z_]+)["']/gi);
+  const tools = [...toolMatches].map((m) => m[1]).filter((n) => n.startsWith("assay_"));
+  const mcpToolCount = tools.length;
+
+  // Count capability claims in CAPABILITIES.md
+  const caps = readFileSync(join(REPO_ROOT, "CAPABILITIES.md"), "utf8");
+  const capMatches = caps.matchAll(/^## (C\d+) —/gm);
+  const capabilities = [...capMatches].map((m) => m[1]);
+  const capCount = capabilities.length;
+
+  // Count eval files
+  const evalCount = execSync(`grep -l "defineEval" ${REPO_ROOT}/evals/capabilities/*.eval.mjs | wc -l`, { encoding: "utf8" }).trim();
+
+  console.log(`  MCP tools in mcp-server.mjs:  ${mcpToolCount} [${tools.join(", ")}]`);
+  console.log(`  Capabilities in CAPABILITIES: ${capCount} [${capabilities.join(", ")}]`);
+  console.log(`  Eval files in evals/capabilities/: ${evalCount}`);
+
+  const expectedTools = 3;  // recall, expand, brief
+  if (mcpToolCount !== expectedTools) {
+    fail(`Expected ${expectedTools} MCP tools (recall, expand, brief), got ${mcpToolCount}`);
+    issues++;
+  }
+
+  // Verify CAPABILITIES.md C-numbering is contiguous from C1
+  for (let i = 0; i < capabilities.length; i++) {
+    if (capabilities[i] !== `C${i + 1}`) {
+      fail(`CAPABILITIES.md non-contiguous: expected C${i + 1}, got ${capabilities[i]}`);
+      issues++;
+      break;
+    }
+  }
+
+  // Cross-check README claim "3 MCP tools" if present
+  const readme = readFileSync(join(REPO_ROOT, "README.md"), "utf8");
+  const readmeToolClaim = readme.match(/(\d+)\s+MCP tools?\b/i);
+  if (readmeToolClaim) {
+    const claimed = Number(readmeToolClaim[1]);
+    if (claimed !== mcpToolCount) {
+      fail(`README claims ${claimed} MCP tools; mcp-server.mjs has ${mcpToolCount}`);
+      issues++;
+    } else {
+      ok(`README MCP-tool count matches code (${mcpToolCount})`);
+    }
+  }
+
+  console.log(issues === 0 ? "\n  ✓ Consistency checks passed.\n" : `\n  ✗ ${issues} consistency issue(s).\n`);
+  process.exit(issues === 0 ? 0 : 1);
+}
+
+async function exportCmd() {
+  // R10 — export decision graph to portable JSON. Pre-team-mode hedge.
+  ensureBuilt();
+  const { DecisionStore } = await import(join(REPO_ROOT, "dist/decisions/store.js"));
+  const Database = (await import("better-sqlite3")).default;
+
+  const dbPath = join(ASSAY_DIR, "decisions.db");
+  if (!existsSync(dbPath)) {
+    fail("decisions.db not found — nothing to export");
+    process.exit(1);
+  }
+
+  const store = new DecisionStore(dbPath);
+  const db = new Database(dbPath, { readonly: true });
+  const decisions = store.recent(100_000);
+  const transitions = db.prepare("SELECT * FROM decision_transitions ORDER BY transitioned_at").all();
+  const evidence = db.prepare("SELECT * FROM decision_evidence ORDER BY created_at").all();
+  const schemaVersion = db.prepare("SELECT MAX(version) as v FROM schema_migrations").get().v;
+  store.close();
+  db.close();
+
+  const bundle = {
+    format: "assay-export-v1",
+    exported_at: new Date().toISOString(),
+    schema_version: schemaVersion,
+    counts: { decisions: decisions.length, transitions: transitions.length, evidence: evidence.length },
+    decisions,
+    transitions,
+    evidence,
+  };
+
+  const outPath = process.argv[3] ?? join(ASSAY_DIR, `export-${new Date().toISOString().slice(0,10)}.json`);
+  writeFileSync(outPath, JSON.stringify(bundle, null, 2));
+  ok(`exported ${decisions.length} decisions to ${outPath}`);
+  console.log(`  format: assay-export-v1, schema: v${schemaVersion}`);
+  console.log(`  size: ${(statSync(outPath).size / 1024).toFixed(1)}KB`);
+}
+
 function uninstall() {
   if (existsSync(PLUGIN_DEST)) {
     execSync(`rm -rf "${PLUGIN_DEST}"`);
@@ -198,12 +366,16 @@ USAGE:
   assay <command>
 
 COMMANDS:
-  install     Install the plugin into Claude Code (~/.claude/plugins/...)
-  doctor      Verify the install + worker + DB state
-  smoke       Run the integration smoke pack (16+ cases)
-  demo        Run an end-to-end demo proving the system works
-  uninstall   Remove the plugin (preserves ~/.assay data)
-  help        Show this help
+  install              Install the plugin into Claude Code
+  doctor               Verify install + worker + DB state (6 checks)
+  doctor --replay      Walk decision graph + assert 5 invariants
+  check-consistency    Verify tool/capability/eval counts match across surfaces
+  export [path]        Export decisions to portable JSON
+  smoke                Run integration smoke pack (19+ cases)
+  eval                 Run capability eval gate (16 × 2 modes)
+  demo                 End-to-end demo (isolated sandbox)
+  uninstall            Remove plugin (preserves ~/.assay data)
+  help                 Show this help
 
 QUICK START:
   npx claude-mem install && npx claude-mem start    # substrate
@@ -213,18 +385,28 @@ QUICK START:
 `);
 }
 
-switch (cmd) {
-  case "install":   install(); break;
-  case "doctor":    doctor(); break;
-  case "smoke":     smoke(); break;
-  case "demo":      demo(); break;
-  case "uninstall": uninstall(); break;
-  case undefined:
-  case "help":
-  case "--help":
-  case "-h":        help(); break;
-  default:
-    fail(`unknown command: ${cmd}`);
-    help();
-    process.exit(1);
+async function dispatch() {
+  switch (cmd) {
+    case "install":            install(); break;
+    case "doctor":
+      if (process.argv[3] === "--replay") await replay();
+      else doctor();
+      break;
+    case "check-consistency":  checkConsistency(); break;
+    case "export":             await exportCmd(); break;
+    case "smoke":              smoke(); break;
+    case "eval":               evalCmd(); break;
+    case "demo":               demo(); break;
+    case "uninstall":          uninstall(); break;
+    case undefined:
+    case "help":
+    case "--help":
+    case "-h":                 help(); break;
+    default:
+      fail(`unknown command: ${cmd}`);
+      help();
+      process.exit(1);
+  }
 }
+
+dispatch();

@@ -99,11 +99,18 @@ export class AssayMCPServer {
     // once the decisions table supports embeddings (deferred per Anti-axiom #6).
     const decisions = this.store.recent(limit);
 
-    // Probe provider health before fan-out.
-    const health = await this.provider.health();
+    // Probe provider health before fan-out. Malformed providers (missing
+    // fields, wrong types, throws) all degrade to "unavailable" — never throw
+    // out to the caller. C7 contract: graceful degrade is unconditional.
+    let health: { status?: string; reason?: string };
+    try {
+      health = await this.provider.health();
+    } catch (err) {
+      health = { status: "offline", reason: err instanceof Error ? err.message : String(err) };
+    }
     const contextTier: RecallResponse["context_tier"] =
-      health.status === "full" ? "full"
-      : health.status === "degraded" ? "degraded"
+      health?.status === "full" ? "full"
+      : health?.status === "degraded" ? "degraded"
       : "unavailable";
 
     const results: RecallResponse["results"] = [];
@@ -120,13 +127,20 @@ export class AssayMCPServer {
         query,
         results,
         context_tier: "unavailable",
-        context_tier_reason: health.reason ?? "provider offline",
+        context_tier_reason: health?.reason ?? "provider offline",
       };
     }
 
     // Two-tier eager fetch: enrich top-N via batched provider call.
     // Cap the search to EAGER_FETCH_TOP_N to honor the "lazy 4-10" contract —
     // expand() does the wider fetch on demand.
+    //
+    // Per-decision enrichment: each top-3 decision gets the SINGLE most-relevant
+    // observation by index position (1st decision ↔ 1st observation, etc).
+    // This is a pragmatic v2 mapping — the local decision IDs and claude-mem
+    // observation IDs are in different namespaces, so we can't do strict ID joins.
+    // v3 candidate: semantic similarity between decision body and observation
+    // narrative to do real per-decision matching.
     const eagerDecisions = decisions.slice(0, EAGER_FETCH_TOP_N);
     let enrichmentMap = new Map<string, { source: string; snippet: string }[]>();
     try {
@@ -134,12 +148,15 @@ export class AssayMCPServer {
       const ids = searchResults.map((r) => r.id);
       if (ids.length > 0) {
         const { found } = await this.provider.getObservations(ids);
-        const enrichments = found.slice(0, EAGER_FETCH_TOP_N).map((o) => ({
-          source: `claude-mem:${o.id}`,
-          snippet: (o.narrative ?? o.text ?? "").slice(0, 280),
-        }));
-        for (const d of eagerDecisions) {
-          enrichmentMap.set(d.id, enrichments);
+        // Per-decision mapping: decision[i] gets observation[i] when both exist.
+        for (let i = 0; i < eagerDecisions.length; i++) {
+          const obs = found[i];
+          if (obs) {
+            enrichmentMap.set(eagerDecisions[i]!.id, [{
+              source: `claude-mem:${obs.id}`,
+              snippet: (obs.narrative ?? obs.text ?? "").slice(0, 280),
+            }]);
+          }
         }
       }
     } catch (err) {

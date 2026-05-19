@@ -62,7 +62,7 @@ Storage: SQLite at `~/.assay/decisions.db` (override via `ASSAY_DB_PATH`)
 ## C3 — Three-tier rescue: no silent drops on transient/recoverable/fatal errors
 
 **Claim.** The Stop hook never silently drops decisions. Every failure class has explicit handling:
-- **Tier 1 (transient):** `SQLITE_BUSY`, network timeout → retry with backoff (3 attempts, 100/200/300ms)
+- **Tier 1 (transient):** `SQLITE_BUSY`, network timeout → retry with exponential backoff (6 attempts: 100/200/400/800/1600/2000ms, ~5s total)
 - **Tier 2 (recoverable):** malformed XML, missing required attr, `EACCES` on a single file → log to `~/.assay/analytics/tool-usage.jsonl` with `outcome='parse-failed'`, skip the offending unit, continue
 - **Tier 3 (fatal):** disk full, schema mismatch, unrecoverable IO → log to `~/.assay/errors.jsonl` AND write `[assay] hook degraded: <msg>` to stderr
 
@@ -211,12 +211,16 @@ Storage: SQLite at `~/.assay/decisions.db` (override via `ASSAY_DB_PATH`)
 
 ## C10 — Append-only audit trail (decision_transitions)
 
-**Claim.** Every state change to a decision (including initial deposit) writes an immutable row to `decision_transitions` with `decision_id`, `from_status`, `to_status`, `reason`, `transitioned_at`. No row is ever deleted from this table.
+**Claim.** Every state change to a decision (including initial deposit) writes an immutable row to `decision_transitions` with `decision_id`, `from_status`, `to_status`, `reason`, `transitioned_at`. The table is append-only at the API surface and via SQLite triggers; the schema is re-applied on every `new DecisionStore()` so triggers self-heal across opens.
 
 **Acceptance.**
 - After depositing N decisions, `decision_transitions` has ≥N rows (one initial-deposit per).
 - Each transition row references a valid `decision_id` (foreign key intact).
 - Rows ordered by `transitioned_at` show the chronological history.
+- Direct SQL `UPDATE` or `DELETE` on the table raises "append-only" error (trigger blocks it).
+- After DROP TRIGGER, the next `new DecisionStore()` re-creates the triggers (CREATE TRIGGER IF NOT EXISTS).
+
+**Honest limit.** A user with raw SQLite write access who runs `DROP TRIGGER` followed immediately by `UPDATE` (without going through DecisionStore) can bypass the trigger within that connection. Defending against this requires SQLite authorizer callbacks which `better-sqlite3` doesn't expose. The contract is "append-only by default and against casual access" not "tamper-proof against an attacker with write access to your laptop."
 
 **Verify.** `evals/capabilities/c10-audit-trail.eval.mjs`
 
@@ -289,6 +293,40 @@ Storage: SQLite at `~/.assay/decisions.db` (override via `ASSAY_DB_PATH`)
 - 10,000 successive recall calls in a tight loop don't get rate-limited.
 
 **Verify.** `evals/capabilities/c14-local-first.eval.mjs`
+
+---
+
+---
+
+## C15 — Concurrent deposits don't corrupt the audit trail
+
+**Claim.** Multiple processes writing to the same `~/.assay/decisions.db` simultaneously do not lose decisions silently or produce orphan `decision_transitions` rows. The Tier-1 retry-with-backoff handles SQLITE_BUSY contention.
+
+**Acceptance.**
+- 10 parallel processes each depositing one decision: ≥80% success rate, row count matches transition count, zero orphans.
+- 20-way contention (adversarial): ≥75% success, zero orphans.
+- Any deposits that fail surface as `result.ok=false` — never silent.
+
+**Verify.** `evals/capabilities/c15-concurrent-deposits.eval.mjs`
+
+**Adversarial vectors.**
+- 20+ parallel writers exhaust the 5s retry budget for some workers
+- Mid-flight process kill leaves partial state
+- Schema is reapplied while another writer holds a lock
+
+## C16 — Graceful degrade on malformed substrate + locked-DB recovery
+
+**Claim.** When `MemoryProvider.health()` returns malformed shapes (throws, returns null, returns wrong types), `recall()` and `brief()` degrade to `context_tier: "unavailable"` rather than throwing exceptions to the caller. When the local SQLite is locked by another writer, the Stop hook retries within its ~5s window.
+
+**Acceptance.**
+- Provider that throws from `health()`: recall returns decisions with `context_tier=unavailable`, no exception.
+- Provider that returns `null` from `health()`: same.
+- Provider that returns `{}` or `{status: "bogus"}`: same.
+- DB locked for 2s by another process: Stop hook succeeds within 5s, captures the decision.
+- `ASSAY_DB_PATH` pointing to a non-writable directory: `new DecisionStore()` raises a clear error rather than silently succeeding.
+- `ECC_HOOK_PROFILE=strict` + conflict-kind tag: stderr emits `[assay] strict mode: N conflict(s)…`.
+
+**Verify.** `evals/capabilities/c16-coverage-gaps.eval.mjs`
 
 ---
 

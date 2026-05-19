@@ -16,6 +16,8 @@ import { MODES } from "./lib/harness.mjs";
 import * as a from "./capabilities/c1-c5-capture-and-rescue.eval.mjs";
 import * as b from "./capabilities/c6-c8-mcp-recall-and-brief.eval.mjs";
 import * as c from "./capabilities/c9-c14-storage-and-isolation.eval.mjs";
+import * as d from "./capabilities/c15-concurrent-deposits.eval.mjs";
+import * as e from "./capabilities/c16-coverage-gaps.eval.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPORTS_DIR = join(__dirname, "reports");
@@ -24,6 +26,8 @@ const ALL_EVALS = [
   a.C1, a.C2, a.C3, a.C4, a.C5,
   b.C6, b.C7, b.C8,
   c.C9, c.C10, c.C11, c.C12, c.C13, c.C14,
+  d.C15,
+  e.C16,
 ];
 
 function parseMode() {
