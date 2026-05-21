@@ -88,6 +88,17 @@ function install() {
     warn(`Manual fix: claude mcp add assay node "${mcpServerPath}" --scope user`);
   }
 
+  info("Registering plugin with Claude Code (so hooks discover)...");
+  try {
+    // Add the marketplace (idempotent — fails-soft if already added)
+    execSync(`claude plugin marketplace add levievanshantz/assay-decisions 2>/dev/null || true`, { stdio: "ignore" });
+    execSync(`claude plugin install assay@assaylabs 2>/dev/null || true`, { stdio: "ignore" });
+    ok(`Plugin 'assay@assaylabs' registered with Claude Code's plugin manager`);
+  } catch (err) {
+    warn(`Plugin auto-registration failed: ${err.message}`);
+    warn(`Manual fix: claude plugin marketplace add levievanshantz/assay-decisions && claude plugin install assay@assaylabs`);
+  }
+
   console.log("\nInstallation complete.");
   console.log("\nNext steps:");
   console.log("  1. Make sure claude-mem is installed and its worker is running:");
@@ -353,6 +364,10 @@ function uninstall() {
   try {
     execSync(`claude mcp remove assay 2>/dev/null || true`, { stdio: "ignore" });
     ok(`MCP server registration removed`);
+  } catch {}
+  try {
+    execSync(`claude plugin uninstall assay 2>/dev/null || true`, { stdio: "ignore" });
+    ok(`Plugin registration removed`);
   } catch {}
   console.log("\nNote: ~/.assay/decisions.db preserved. Remove with: rm -rf ~/.assay");
   console.log("Restart Claude Code to pick up the uninstall.");
