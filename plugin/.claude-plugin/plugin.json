@@ -1,0 +1,13 @@
+{
+  "name": "assay",
+  "version": "2.0.0-alpha.2",
+  "description": "Typed decision-graph judgment function for Claude Code. The second brain for Builder PMs. Cited recall, supersession-aware, local-first, no quota.",
+  "author": {
+    "name": "Levi Shantz",
+    "email": "levishantz@gmail.com"
+  },
+  "repository": "https://github.com/levievanshantz/assay-decisions",
+  "homepage": "https://github.com/levievanshantz/assay-decisions#readme",
+  "license": "MIT",
+  "keywords": ["claude-code", "mcp", "memory", "decision-graph", "agentic", "pm-tools", "judgment-function"]
+}

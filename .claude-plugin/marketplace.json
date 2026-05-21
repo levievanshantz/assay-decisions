@@ -1,0 +1,19 @@
+{
+  "name": "assaylabs",
+  "owner": {
+    "name": "Levi Shantz",
+    "email": "levishantz@gmail.com"
+  },
+  "metadata": {
+    "description": "AssayLabs plugins — typed decision-graph memory for Builder PMs",
+    "homepage": "https://github.com/levievanshantz/assay-decisions"
+  },
+  "plugins": [
+    {
+      "name": "assay",
+      "version": "2.0.0-alpha.2",
+      "source": "./plugin",
+      "description": "Typed decision-graph judgment function for Claude Code. Tag decisions inline; recall with citations later. Local-first, no quota."
+    }
+  ]
+}
