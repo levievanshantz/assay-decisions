@@ -75,20 +75,12 @@ function install() {
   mkdirSync(join(ASSAY_DIR, "analytics"), { recursive: true });
   ok(`Workspace at ${ASSAY_DIR}`);
 
-  info("Registering MCP server with Claude Code (absolute path)...");
-  const mcpServerPath = join(PLUGIN_DEST, "plugin", "scripts", "mcp-server.mjs");
-  try {
-    execSync(`claude mcp remove assay 2>/dev/null || true`, { stdio: "ignore" });
-  } catch {}
-  try {
-    execSync(`claude mcp add assay node "${mcpServerPath}" --scope user`, { stdio: "ignore" });
-    ok(`MCP server 'assay' registered at user scope`);
-  } catch (err) {
-    warn(`MCP auto-registration failed: ${err.message}`);
-    warn(`Manual fix: claude mcp add assay node "${mcpServerPath}" --scope user`);
-  }
+  // MCP server registration is now declared inside plugin/.mcp.json and
+  // attached automatically by Claude Code's plugin manager on plugin enable.
+  // No separate `claude mcp add` call is needed (and it would create a
+  // scope-conflict warning).
 
-  info("Registering plugin with Claude Code (so hooks discover)...");
+  info("Registering plugin with Claude Code (attaches MCP and hooks)...");
   try {
     // Add the marketplace (idempotent — fails-soft if already added)
     execSync(`claude plugin marketplace add levievanshantz/assay-decisions 2>/dev/null || true`, { stdio: "ignore" });
@@ -264,8 +256,8 @@ function checkConsistency() {
   console.log("\nassay check-consistency\n");
   let issues = 0;
 
-  // Count MCP tools registered in the server
-  const mcpServerPath = join(REPO_ROOT, "plugin/scripts/mcp-server.mjs");
+  // Count MCP tools registered in the server (read source of truth, not bundle)
+  const mcpServerPath = join(REPO_ROOT, "plugin-src/mcp-server-entry.mjs");
   const mcpSrc = readFileSync(mcpServerPath, "utf8");
   const toolMatches = mcpSrc.matchAll(/name:\s*["']([a-z_]+)["']/gi);
   const tools = [...toolMatches].map((m) => m[1]).filter((n) => n.startsWith("assay_"));
@@ -280,7 +272,7 @@ function checkConsistency() {
   // Count eval files
   const evalCount = execSync(`grep -l "defineEval" ${REPO_ROOT}/evals/capabilities/*.eval.mjs | wc -l`, { encoding: "utf8" }).trim();
 
-  console.log(`  MCP tools in mcp-server.mjs:  ${mcpToolCount} [${tools.join(", ")}]`);
+  console.log(`  MCP tools in mcp-server-entry: ${mcpToolCount} [${tools.join(", ")}]`);
   console.log(`  Capabilities in CAPABILITIES: ${capCount} [${capabilities.join(", ")}]`);
   console.log(`  Eval files in evals/capabilities/: ${evalCount}`);
 
@@ -305,7 +297,7 @@ function checkConsistency() {
   if (readmeToolClaim) {
     const claimed = Number(readmeToolClaim[1]);
     if (claimed !== mcpToolCount) {
-      fail(`README claims ${claimed} MCP tools; mcp-server.mjs has ${mcpToolCount}`);
+      fail(`README claims ${claimed} MCP tools; mcp-server-entry.mjs has ${mcpToolCount}`);
       issues++;
     } else {
       ok(`README MCP-tool count matches code (${mcpToolCount})`);
