@@ -23,6 +23,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:plugin": "npm run build && node scripts/build-plugin.mjs",
     "test": "node --test tests/",
     "smoke": "npm run build && node scripts/smoke-v2-integration.mjs",
     "demo": "npm run build && node scripts/demo-end-to-end.mjs",
@@ -46,6 +47,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "7.6.11",
     "@types/node": "22.7.4",
+    "esbuild": "^0.24.2",
     "typescript": "5.6.2"
   },
   "engines": {
@@ -59,6 +61,14 @@
     "url": "https://github.com/levievanshantz/assay-decisions/issues"
   },
   "homepage": "https://github.com/levievanshantz/assay-decisions#readme",
-  "keywords": ["claude-code", "mcp", "memory", "decision-graph", "agentic", "pm-tools", "judgment-function"],
+  "keywords": [
+    "claude-code",
+    "mcp",
+    "memory",
+    "decision-graph",
+    "agentic",
+    "pm-tools",
+    "judgment-function"
+  ],
   "license": "MIT"
 }

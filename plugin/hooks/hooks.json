@@ -8,7 +8,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "_C=\"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"; _E=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT:-}}\"; _P=$({ [ -n \"$_E\" ] && printf '%s\\n' \"$_E\"; ls -dt \"$_C/plugins/cache/assaylabs/assay\"/[0-9]*/ 2>/dev/null; printf '%s\\n' \"$_C/plugins/marketplaces/assaylabs/assay\"; printf '%s\\n' \"$_C/plugins/marketplaces/levievanshantz/assay-decisions\"; printf '%s\\n' \"$_C/plugins/marketplaces/levievanshantz/assay\"; } | while IFS= read -r _R; do _R=\"${_R%/}\"; [ -f \"$_R/plugin/scripts/stop-hook.mjs\" ] && { printf '%s\\n' \"$_R\"; break; }; done); [ -n \"$_P\" ] || { echo '{\"continue\":true,\"suppressOutput\":true}'; exit 0; }; node \"$_P/plugin/scripts/stop-hook.mjs\" || true; echo '{\"continue\":true,\"suppressOutput\":true}'",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/stop-hook.cjs\" || true; echo '{\"continue\":true,\"suppressOutput\":true}'",
             "timeout": 30
           }
         ],

@@ -1,11 +1,12 @@
-#!/usr/bin/env node
-// Assay MCP server entry. stdio transport. Exposes 3 tools:
+// Assay MCP server bundle entry. esbuild bundles this file (+ all imports
+// except better-sqlite3, which is external and resolved at runtime from
+// plugin/node_modules/) into plugin/scripts/mcp-server.cjs.
+//
+// stdio transport. Exposes 3 tools:
 //   - assay_decision_recall
 //   - assay_decision_expand
 //   - assay_brief_render
 
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -13,10 +14,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const distRoot = resolve(__dirname, "..", "..", "dist");
-
-const { AssayMCPServer } = await import(resolve(distRoot, "mcp/server.js"));
+import { AssayMCPServer } from "../dist/mcp/server.js";
 
 const assay = new AssayMCPServer();
 
@@ -97,12 +95,19 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   }
 });
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
 
-const shutdown = async () => {
-  try { await assay.close(); } catch {}
-  process.exit(0);
-};
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+  const shutdown = async () => {
+    try { await assay.close(); } catch {}
+    process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+}
+
+main().catch((err) => {
+  process.stderr.write(`[assay] mcp server crashed: ${err.message}\n`);
+  process.exit(1);
+});
