@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "assay": {
+      "type": "stdio",
+      "command": "sh",
+      "args": [
+        "-c",
+        "_C=\"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"; _E=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT:-}}\"; _P=$({ [ -n \"$_E\" ] && printf '%s\\n' \"$_E\"; printf '%s\\n' \"$PWD/plugin\" \"$PWD\"; ls -dt \"$_C/plugins/cache/assaylabs/assay\"/[0-9]*/ 2>/dev/null; printf '%s\\n' \"$_C/plugins/marketplaces/assaylabs/plugin\" \"$HOME/assay/plugin\"; } | while IFS= read -r _R; do [ -f \"$_R/scripts/mcp-server.mjs\" ] && { printf '%s\\n' \"$_R\"; break; }; done); [ -n \"$_P\" ] || { echo \"assay: mcp server not found\" >&2; exit 1; }; exec node \"$_P/scripts/mcp-server.mjs\""
+      ]
+    }
+  }
+}
