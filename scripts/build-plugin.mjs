@@ -39,6 +39,12 @@ async function bundle(entry, outfile) {
   console.log(`  bundled → ${outfile}`);
 }
 
+// Drop SQLite C source and other build-from-source artifacts that only
+// matter when better-sqlite3 needs to be compiled (we ship the prebuilt
+// .node binary, so they're dead weight). Keeps the vendored size to ~3MB
+// instead of ~12MB.
+const PRUNE_PATHS = ["deps", "src", "binding.gyp", "README.md"];
+
 async function vendor(dep) {
   const src = resolve(root, "node_modules", dep);
   const dst = resolve(pluginNodeModules, dep);
@@ -47,6 +53,9 @@ async function vendor(dep) {
   }
   await rm(dst, { recursive: true, force: true });
   await cp(src, dst, { recursive: true, dereference: true });
+  for (const p of PRUNE_PATHS) {
+    await rm(resolve(dst, p), { recursive: true, force: true });
+  }
   console.log(`  vendored → plugin/node_modules/${dep}`);
 }
 
